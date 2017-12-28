@@ -17,8 +17,9 @@ class Hand(object):
     def value(self):
         values = sorted([min(card.value, 10) for card in self.cards], reverse=True)
         total_value = 0
+        self.soft = False
         for value in values:
-            self.soft = False
+            self.soft = False or self.soft
             total_value += value
             if value == 1 and total_value <= 11:
                 total_value += 10
@@ -183,10 +184,17 @@ class Blackjack(object):
         self.dealer.bet(0)
         for player in self.players:
             print '%s money:' % str(player), player.money
-            bet = int(raw_input('How much does %s bet? ' % str(player)) or 5)
-            print 'Bet:', bet
-            if not player.bet(bet):
-                print 'You do not have that much money!'
+            while True:
+                try:
+                    bet = int(raw_input('How much does %s bet? ' % str(player)) or 5)
+                    print 'Bet:', bet
+                    if not player.bet(bet):
+                        print 'You do not have that much money!'
+                        player.money += int(raw_input('Add some money? ') or 100)
+                        continue
+                    break
+                except ValueError:
+                    continue
         print ''
 
         # deal hands
