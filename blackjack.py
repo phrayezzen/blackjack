@@ -1,3 +1,4 @@
+from time import sleep
 from Deck import Card, Deck
 
 SHUFFLE_LIMIT = 25
@@ -25,11 +26,15 @@ class Hand(object):
         return total_value
 
     @property
-    def busted(self):
+    def is_busted(self):
         return self.value > 21
 
     @property
-    def splittable(self):
+    def is_blackjack(self):
+        return len(self.cards) == 2 and self.value == 21
+
+    @property
+    def is_splittable(self):
         """
         This should be easy to calculate, but we need to check if TJQK are equal value.
         """
@@ -38,7 +43,7 @@ class Hand(object):
     def hit(self, card):
         """Adds another card to current hand."""
         self.cards.append(card)
-        if self.busted:
+        if self.is_busted:
             self.done = True
             self.won = False
             print 'BUSTED!'
@@ -77,6 +82,22 @@ class Hand(object):
         self.done = True
         self.won = False
         self.bet /= 2
+
+    def blackjack(self):
+        """
+        Payout 2:1 for 21 hand value.
+        Automatic.
+        Only allowed on first turn.
+
+        Payout happens immediately, not at the end of round, so bet is set to 0.
+        This is to handle a niche edge case where both player and dealer
+        get blackjack.
+        """
+        print 'BLACKJACK!'
+        sleep(0.5)
+        self.done = True
+        self.won = True
+        self.bet = 0
 
     def __str__(self):
         return ' '.join(map(str, self.cards)) + ' (%d)' % self.value
@@ -136,7 +157,7 @@ class Blackjack(object):
         self.deck.shuffle()
 
     def start(self):
-        print 'Welcome to Blackjack Simulator'
+        print 'Welcome to Blackjack Simulator!'
         num_players = int(raw_input('How many players? ') or 1)
         for i in xrange(num_players):
             money = int(raw_input('How much money does Player %d start with? ' % (i + 1)) or 100)
@@ -184,10 +205,13 @@ class Blackjack(object):
                 print '%s:' % str(player)
                 print player.active_hand
                 print ''
+                if player.active_hand.is_blackjack:
+                    player.active_hand.blackjack()
+                    player.hand_index += 1
 
-        # handle dealer ACE - ask for insurance
+        # check_dealer_blackjack
         if self.check_dealer_blackjack():
-            continue
+            return
 
         # player turns
         for player in self.players:
@@ -200,22 +224,31 @@ class Blackjack(object):
         self.calculate_payout()
 
     def check_dealer_blackjack(self):
-        if self.dealer.active_hand[0].value != 1:
-            return False
+        hand = self.dealer.active_hand
+        if hand[0].value != 1 and hand[0].value not in TENS:
+            return
 
-        print 'Dealer has an Ace. Insurance?'
         insurances = [0 for i in xrange(len(self.players))]
-        for player in self.players:
-            insurances[player.number - 1] = int(raw_input(str(player)) or 0)
+        if hand[0].value == 1:
+            print 'Dealer has an Ace. Insurance?'
+            for player in self.players:
+                if not player.done:
+                    insurance = player.active_hand.bet
+                    while insurance >= player.active_hand.bet / 2:
+                        insurance = int(raw_input('%s: ' % player) or 0)
+                    insurances[player.number - 1] = insurance
+                    player.money -= insurance
+            print ''
 
-        if self.dealer.active_hand[1].value in TENS:
-            print self.dealer.active_hand
+        if hand.is_blackjack:
+            print hand
             print 'DEALER BLACKJACK!'
+            sleep(0.5)
             for player in self.players:
                 insurance = insurances[player.number - 1]
-                player.money += 2 * insurance
-                print '%s money: %d' % player, player.money
-            return True
+                player.money += 3 * insurance
+                player.active_hand.won = False
+                player.hand_index += 1
 
     def player_turn(self, player):
         print "%s's turn" % player
@@ -228,8 +261,7 @@ class Blackjack(object):
                 print player.active_hand
 
                 if first_turn and player.active_hand.value == 21:
-                    print '%s BLACKJACK' % str(player).upper()
-                    player.hand_index += 1
+                    player.active_hand.blackjack()
                     continue
 
                 action = ''
@@ -246,7 +278,7 @@ class Blackjack(object):
                         continue
                     player.active_hand.double_down(self.deck.deal())
                 elif action == 's' and first_turn:
-                    if not first_turn or not player.active_hand.splittable:
+                    if not first_turn or not player.active_hand.is_splittable:
                         print 'Not allowed!'
                         continue
                     player.handle_split()
@@ -259,25 +291,25 @@ class Blackjack(object):
                 first_turn = False or action == 's'
 
             print player.active_hand
+            sleep(0.2)
             player.hand_index += 1
 
     def dealer_turn(self):
-        from time import sleep
         print "Dealer's turn"
         hand = self.dealer.active_hand
         print hand
 
         # do not deal more if game is over
-        all_lost = True
+        needs_dealing = False
         for player in self.players:
             for phand in player.hands:
                 if phand.won is None:
-                    all_lost = False
+                    needs_dealing = True
                     break
-            if not all_lost:
+            if needs_dealing:
                 break
-        if all_lost:
-            print 'Everyone lost...'
+        if not needs_dealing:
+            print 'Everyone has blackjack or lost'
             return
         
         while hand.value < 17 or (hand.value == 17 and hand.soft):
@@ -291,8 +323,8 @@ class Blackjack(object):
             print player
             for hand in player.hands:
                 if hand.won is None:
-                    hand.won = self.dealer.active_hand.busted or hand.value > self.dealer.active_hand.value
-                    if hand.value == self.dealer.active_hand.value and not hand.busted:
+                    hand.won = self.dealer.active_hand.is_busted or hand.value > self.dealer.active_hand.value
+                    if hand.value == self.dealer.active_hand.value and not hand.is_busted:
                         hand.won = None  # weird PUSH state
 
                 if hand.won is True:
