@@ -2,6 +2,7 @@ from Deck import Card, Deck
 
 SHUFFLE_LIMIT = 25
 ACTIONS = ['H', 'S', 'D', 's', 'X']  # hit, stand, double, split, surrender
+TENS = [10, 11, 12, 13]
 
 class Hand(object):
     def __init__(self, bet):
@@ -32,8 +33,7 @@ class Hand(object):
         """
         This should be easy to calculate, but we need to check if TJQK are equal value.
         """
-        tens = [10, 11, 12, 13]
-        return self.cards[0].value == self.cards[1].value or (self.cards[0].value in tens and self.cards[1].value in tens)
+        return self.cards[0].value == self.cards[1].value or (self.cards[0].value in TENS and self.cards[1].value in TENS)
 
     def hit(self, card):
         """Adds another card to current hand."""
@@ -186,8 +186,8 @@ class Blackjack(object):
                 print ''
 
         # handle dealer ACE - ask for insurance
-
-        # handle dealer blackjack
+        if self.check_dealer_blackjack():
+            continue
 
         # player turns
         for player in self.players:
@@ -199,17 +199,39 @@ class Blackjack(object):
         # calculate payout
         self.calculate_payout()
 
+    def check_dealer_blackjack(self):
+        if self.dealer.active_hand[0].value != 1:
+            return False
+
+        print 'Dealer has an Ace. Insurance?'
+        insurances = [0 for i in xrange(len(self.players))]
+        for player in self.players:
+            insurances[player.number - 1] = int(raw_input(str(player)) or 0)
+
+        if self.dealer.active_hand[1].value in TENS:
+            print self.dealer.active_hand
+            print 'DEALER BLACKJACK!'
+            for player in self.players:
+                insurance = insurances[player.number - 1]
+                player.money += 2 * insurance
+                print '%s money: %d' % player, player.money
+            return True
+
     def player_turn(self, player):
         print "%s's turn" % player
-        # handle player blackjack
 
         while not player.done:
             first_turn = True
             while not player.active_hand.done:
                 while len(player.active_hand) < 2:
                     player.active_hand.hit(self.deck.deal())
-
                 print player.active_hand
+
+                if first_turn and player.active_hand.value == 21:
+                    print '%s BLACKJACK' % str(player).upper()
+                    player.hand_index += 1
+                    continue
+
                 action = ''
                 while action not in ACTIONS:
                     action = raw_input('Action? ')
