@@ -1,33 +1,51 @@
 from Deck import Card, Deck
 
 SHUFFLE_LIMIT = 25
+ACTIONS = ['H', 'S', 'D', 's', 'X']  # hit, stand, double, split, surrender
 
 class Hand(object):
     def __init__(self, bet):
         self.cards = []
         self.bet = bet
+        self.done = False
+        self.won = None
+        self.soft = False
 
     @property
     def value(self):
-        values = [min(card.value, 10) for card in self.cards].sorted(reverse=True)
+        values = sorted([min(card.value, 10) for card in self.cards], reverse=True)
         total_value = 0
         for value in values:
+            self.soft = False
             total_value += value
             if value == 1 and total_value <= 11:
                 total_value += 10
+                self.soft = True
         return total_value
 
     @property
     def busted(self):
         return self.value > 21
 
+    @property
+    def splittable(self):
+        """
+        This should be easy to calculate, but we need to check if TJQK are equal value.
+        """
+        tens = [10, 11, 12, 13]
+        return self.cards[0].value == self.cards[1].value or (self.cards[0].value in tens and self.cards[1].value in tens)
+
     def hit(self, card):
         """Adds another card to current hand."""
         self.cards.append(card)
+        if self.busted:
+            self.done = True
+            self.won = False
+            print 'BUSTED!'
 
     def stand(self):
         """Stops adding cards to hand."""
-        pass  # no op
+        self.done = True
 
     def double_down(self, card):
         """
@@ -35,7 +53,8 @@ class Hand(object):
         Only allowed on first turn.
         """
         self.bet *= 2
-        self.cards.append(card)
+        self.hit(card)
+        self.stand()
 
     def split(self):
         """
@@ -51,15 +70,25 @@ class Hand(object):
         return new_hand
 
     def surrender(self):
-        """Lose hand and get half your bet back."""
-        pass
+        """
+        Lose hand and get half your bet back.
+        Only allowed on first turn.
+        """
+        self.done = True
+        self.won = False
+        self.bet /= 2
 
     def __str__(self):
-        return ' '.join(map(str, self.cards))
+        return ' '.join(map(str, self.cards)) + ' (%d)' % self.value
 
     def __repr__(self):
         return self.__str__()
 
+    def __getitem__(self, key):
+        return self.cards[key]
+
+    def __len__(self):
+        return len(self.cards)
 
 
 class Player(object):
@@ -75,14 +104,19 @@ class Player(object):
 
     @property
     def done(self):
-        return self.hand_index == len(self.hands)
+        return self.hand_index >= len(self.hands)
 
     def bet(self, bet=0):
         """Returns if bet was valid."""
         if bet > self.money:
             return False
         self.hands = [Hand(bet)]
+        self.hand_index = 0
         return True
+
+    def handle_split(self):
+        new_hand = self.active_hand.split()
+        self.hands.insert(self.hand_index, new_hand)
 
     def __str__(self):
         return 'Player %d' % self.number
@@ -127,31 +161,128 @@ class Blackjack(object):
             print 'Bet:', bet
             if not player.bet(bet):
                 print 'You do not have that much money!'
+        print ''
 
         # deal hands
         for player in self.players:
-            player.hands[0].hit(self.deck.deal()[0])
-        self.dealer.hands[0].hit(self.deck.deal()[0])
+            if not player.done:
+                player.active_hand.hit(self.deck.deal())
+        self.dealer.active_hand.hit(self.deck.deal())
         # nuance - deal in rounds, not two at a time
         for player in self.players:
-            player.hands[0].hit(self.deck.deal()[0])
-        self.dealer.hands[0].hit(self.deck.deal()[0])
+            if not player.done:
+                player.active_hand.hit(self.deck.deal())
+        self.dealer.active_hand.hit(self.deck.deal())
 
         # print out hands
-        print 'House:'
-        print self.dealer.hands[0]
+        print 'Dealer:'
+        print self.dealer.active_hand[0], '??'
         print ''
 
         for player in self.players:
-            print '%s:' % str(player)
-            for hand in player.hands:
-                print '%s' % str(hand)
-
+            if not player.done:
+                print '%s:' % str(player)
+                print player.active_hand
+                print ''
 
         # handle dealer ACE - ask for insurance
+
         # handle dealer blackjack
 
         # player turns
+        for player in self.players:
+            self.player_turn(player)
+            print ''
+        self.dealer_turn()
+        print ''
+
+        # calculate payout
+        self.calculate_payout()
+
+    def player_turn(self, player):
+        print "%s's turn" % player
+        # handle player blackjack
+
+        while not player.done:
+            first_turn = True
+            while not player.active_hand.done:
+                while len(player.active_hand) < 2:
+                    player.active_hand.hit(self.deck.deal())
+
+                print player.active_hand
+                action = ''
+                while action not in ACTIONS:
+                    action = raw_input('Action? ')
+
+                if action == 'H':
+                    player.active_hand.hit(self.deck.deal())
+                elif action == 'S':
+                    player.active_hand.stand()
+                elif action == 'D':
+                    if not first_turn:
+                        print 'Not allowed!'
+                        continue
+                    player.active_hand.double_down(self.deck.deal())
+                elif action == 's' and first_turn:
+                    if not first_turn or not player.active_hand.splittable:
+                        print 'Not allowed!'
+                        continue
+                    player.handle_split()
+                elif action == 'X' and first_turn:
+                    if not first_turn:
+                        print 'Not allowed!'
+                        continue
+                    player.active_hand.surrender()
+
+                first_turn = False or action == 's'
+
+            print player.active_hand
+            player.hand_index += 1
+
+    def dealer_turn(self):
+        from time import sleep
+        print "Dealer's turn"
+        hand = self.dealer.active_hand
+        print hand
+
+        # do not deal more if game is over
+        all_lost = True
+        for player in self.players:
+            for phand in player.hands:
+                if phand.won is None:
+                    all_lost = False
+                    break
+            if not all_lost:
+                break
+        if all_lost:
+            print 'Everyone lost...'
+            return
+        
+        while hand.value < 17 or (hand.value == 17 and hand.soft):
+            sleep(0.5)
+            hand.hit(self.deck.deal())
+            print hand
+        sleep(0.5)
+
+    def calculate_payout(self):
+        for player in self.players:
+            print player
+            for hand in player.hands:
+                if hand.won is None:
+                    hand.won = self.dealer.active_hand.busted or hand.value > self.dealer.active_hand.value
+                    if hand.value == self.dealer.active_hand.value and not hand.busted:
+                        hand.won = None  # weird PUSH state
+
+                if hand.won is True:
+                    message = 'WON!'
+                    player.money += hand.bet                    
+                elif hand.won is False:
+                    message = 'Lost...'
+                    player.money -= hand.bet
+                elif hand.won is None:
+                    message = 'Push'
+                print hand, message
+            print 'Money: %d' % player.money
 
 
 if __name__ == '__main__':

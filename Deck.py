@@ -46,20 +46,26 @@ class Deck(object):
         from random import shuffle
         shuffle(self.deck)
 
-    def deal(self, num_cards=1):
+    def deal(self):
         """
-        Returns a list of dealt cards.
+        Returns top card.
         Removes cards from top (front) of deck.
         """
+        return self.deck.pop(0)
+
+    def deal_multiple(self, num_cards=1):
         dealt_cards = self.deck[:num_cards]
         self.deck = self.deck[num_cards:]
         return dealt_cards
 
-    def peek(self, num_cards=1):
+    def peek(self):
         """
         Reveals top card.
         Does not remove from top (front) of deck.
         """
+        return self.deck[0]
+
+    def peek_multiple(self, num_cards=1):
         return self.deck[:num_cards]
 
     def __add__(self, other):
