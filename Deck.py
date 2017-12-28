@@ -72,6 +72,9 @@ class Deck(object):
     def __repr__(self):
         return self.__str__()
 
+    def __len__(self):
+        return len(self.deck)
+
 
 if __name__ == '__main__':
     pass
