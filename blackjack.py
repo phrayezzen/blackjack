@@ -137,13 +137,15 @@ class Player(object):
         """Returns if bet was valid."""
         if bet > self.money:
             return False
+        self.money -= bet
         self.hands = [Hand(bet)]
         self.hand_index = 0
         return True
 
     def handle_split(self):
         new_hand = self.active_hand.split()
-        self.hands.insert(self.hand_index, new_hand)
+        self.hands.insert(self.hand_index + 1, new_hand)
+        self.money -= new_hand.bet
 
     def __str__(self):
         return 'Player %d' % self.number
@@ -221,7 +223,7 @@ class Blackjack(object):
                 print player.active_hand
                 print ''
                 if player.active_hand.is_blackjack:
-                    player.money += 2 * player.active_hand.bet
+                    player.money += 3 * player.active_hand.bet
                     player.active_hand.blackjack()
                     player.hand_index += 1
 
@@ -250,7 +252,7 @@ class Blackjack(object):
             for player in self.players:
                 if not player.done:
                     insurance = player.active_hand.bet
-                    while insurance > player.active_hand.bet / 2:
+                    while insurance > player.active_hand.bet / 2 and insurance > player.money:
                         insurance = int(raw_input('%s: ' % player) or 0)
                     insurances[player.number - 1] = insurance
                     player.money -= insurance
@@ -278,7 +280,7 @@ class Blackjack(object):
                 print player.active_hand
 
                 if first_turn and player.active_hand.value == 21:
-                    player.money += 2 * player.active_hand.bet
+                    player.money += 3 * player.active_hand.bet
                     player.active_hand.blackjack()
                     continue
 
@@ -291,12 +293,12 @@ class Blackjack(object):
                 elif action == 'S':
                     player.active_hand.stand()
                 elif action == 'D':
-                    if not first_turn:
+                    if not first_turn or player.money < player.active_hand.bet:
                         print 'Not allowed!'
                         continue
                     player.active_hand.double_down(self.deck.deal())
                 elif action == 's' and first_turn:
-                    if not first_turn or not player.active_hand.is_splittable:
+                    if not first_turn or not player.active_hand.is_splittable or player.money < player.active_hand.bet:
                         print 'Not allowed!'
                         continue
                     player.handle_split()
@@ -345,14 +347,16 @@ class Blackjack(object):
                     if hand.value == self.dealer.active_hand.value and not hand.is_busted:
                         hand.won = None  # weird PUSH state
 
-                if hand.won is True:
+                if hand.is_blackjack:
+                    message = 'BLACKJACK!!'
+                elif hand.won is True:
                     message = 'WON!'
-                    player.money += hand.bet                    
+                    player.money += 2 * hand.bet
                 elif hand.won is False:
                     message = 'Lost...'
-                    player.money -= hand.bet
                 elif hand.won is None:
                     message = 'Push'
+                    player.money += hand.bet
                 print hand, message
             print 'Money: %d' % player.money
 
