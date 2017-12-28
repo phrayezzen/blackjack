@@ -38,7 +38,7 @@ class Hand(object):
         """
         This should be easy to calculate, but we need to check if TJQK are equal value.
         """
-        return self.cards[0].value == self.cards[1].value or (self.cards[0].value in TENS and self.cards[1].value in TENS)
+        return len(self.cards) == 2 and (self.cards[0].value == self.cards[1].value or (self.cards[0].value in TENS and self.cards[1].value in TENS))
 
     def hit(self, card):
         """Adds another card to current hand."""
@@ -100,7 +100,12 @@ class Hand(object):
         self.bet = 0
 
     def __str__(self):
-        return ' '.join(map(str, self.cards)) + ' (%d)' % self.value
+        modifier = ''
+        if self.soft:
+            modifier = 'a'
+        if self.is_splittable:
+            modifier = 's'
+        return ' '.join(map(str, self.cards)) + ' (%d%s)' % (self.value, modifier)
 
     def __repr__(self):
         return self.__str__()
@@ -196,8 +201,10 @@ class Blackjack(object):
         self.dealer.active_hand.hit(self.deck.deal())
 
         # print out hands
+        print '========'
         print 'Dealer:'
         print self.dealer.active_hand[0], '??'
+        print '========'
         print ''
 
         for player in self.players:
@@ -206,6 +213,7 @@ class Blackjack(object):
                 print player.active_hand
                 print ''
                 if player.active_hand.is_blackjack:
+                    player.money += 2 * player.active_hand.bet
                     player.active_hand.blackjack()
                     player.hand_index += 1
 
@@ -234,7 +242,7 @@ class Blackjack(object):
             for player in self.players:
                 if not player.done:
                     insurance = player.active_hand.bet
-                    while insurance >= player.active_hand.bet / 2:
+                    while insurance > player.active_hand.bet / 2:
                         insurance = int(raw_input('%s: ' % player) or 0)
                     insurances[player.number - 1] = insurance
                     player.money -= insurance
@@ -247,7 +255,8 @@ class Blackjack(object):
             for player in self.players:
                 insurance = insurances[player.number - 1]
                 player.money += 3 * insurance
-                player.active_hand.won = False
+                if not player.done:
+                    player.active_hand.won = False
                 player.hand_index += 1
 
     def player_turn(self, player):
@@ -261,6 +270,7 @@ class Blackjack(object):
                 print player.active_hand
 
                 if first_turn and player.active_hand.value == 21:
+                    player.money += 2 * player.active_hand.bet
                     player.active_hand.blackjack()
                     continue
 
