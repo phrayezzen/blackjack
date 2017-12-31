@@ -12,6 +12,7 @@ class Hand(object):
         self.done = False
         self.won = None
         self.soft = False
+        self.doubled = False
 
     @property
     def value(self):
@@ -59,6 +60,7 @@ class Hand(object):
         Only allowed on first turn.
         """
         self.bet *= 2
+        self.doubled = True
         self.hit(card)
         self.stand()
 
@@ -251,8 +253,8 @@ class Blackjack(object):
             print 'Dealer has an Ace. Insurance?'
             for player in self.players:
                 if not player.done:
-                    insurance = player.active_hand.bet
-                    while insurance > player.active_hand.bet / 2 and insurance > player.money:
+                    insurance = max(player.money, player.active_hand.bet) + 1
+                    while insurance > player.active_hand.bet / 2 or insurance > player.money:
                         insurance = int(raw_input('%s: ' % player) or 0)
                     insurances[player.number - 1] = insurance
                     player.money -= insurance
@@ -296,6 +298,7 @@ class Blackjack(object):
                     if not first_turn or player.money < player.active_hand.bet:
                         print 'Not allowed!'
                         continue
+                    player.money -= player.active_hand.bet
                     player.active_hand.double_down(self.deck.deal())
                 elif action == 's' and first_turn:
                     if not first_turn or not player.active_hand.is_splittable or player.money < player.active_hand.bet:
@@ -307,6 +310,7 @@ class Blackjack(object):
                         print 'Not allowed!'
                         continue
                     player.active_hand.surrender()
+                    player.money += player.active_hand.bet
 
                 first_turn = False or action == 's'
 
@@ -352,6 +356,8 @@ class Blackjack(object):
                 elif hand.won is True:
                     message = 'WON!'
                     player.money += 2 * hand.bet
+                    if hand.doubled:
+                        message += ' x2'
                 elif hand.won is False:
                     message = 'Lost...'
                 elif hand.won is None:
